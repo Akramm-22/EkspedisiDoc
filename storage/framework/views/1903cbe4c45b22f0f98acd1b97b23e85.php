@@ -1,0 +1,2 @@
+<script src="<?php echo e(asset('pwa-register.js')); ?>" defer></script>
+<?php /**PATH C:\Users\lapto\Documents\Akram\Project UKK\Ekspedisii_fixed_total\resources\views/components/pwa-register.blade.php ENDPATH**/ ?>

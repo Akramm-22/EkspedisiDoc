@@ -1,0 +1,94 @@
+name: drgekspedisi
+
+# Lets ${VAR} interpolation below (MYSQL_DATABASE, APP_PORT, DB_ROOT_PASSWORD...)
+# read from .env.docker. Requires Docker Compose v2.24+; if your version is
+# older, always run compose commands with `--env-file .env.docker` instead.
+env_file: .env.docker
+
+x-web-common: &web-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: drgekspedisi-web:latest
+  env_file:
+    - .env.docker
+  volumes:
+    - storage_data:/var/www/html/storage
+    - bootstrap_cache:/var/www/html/bootstrap/cache
+  depends_on:
+    mysql:
+      condition: service_healthy
+  networks:
+    - drgekspedisi_net
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://127.0.0.1/up"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 30s
+
+services:
+  # ---- 1 web image, run as 3 containers (web1/web2/web3) ----
+  web1:
+    <<: *web-common
+    container_name: drgekspedisi_web1
+
+  web2:
+    <<: *web-common
+    container_name: drgekspedisi_web2
+
+  web3:
+    <<: *web-common
+    container_name: drgekspedisi_web3
+
+  # ---- Nginx load balancer in front of the 3 web containers ----
+  loadbalancer:
+    image: nginx:1.27-alpine
+    container_name: drgekspedisi_lb
+    ports:
+      - "${APP_PORT:-8000}:80"
+    volumes:
+      - ./docker/nginx.lb.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      web1:
+        condition: service_healthy
+      web2:
+        condition: service_healthy
+      web3:
+        condition: service_healthy
+    networks:
+      - drgekspedisi_net
+    restart: unless-stopped
+
+  # ---- Database ----
+  mysql:
+    image: mysql:8.0
+    container_name: drgekspedisi_mysql
+    env_file:
+      - .env.docker
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - drgekspedisi_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+networks:
+  drgekspedisi_net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  storage_data:
+  bootstrap_cache:
